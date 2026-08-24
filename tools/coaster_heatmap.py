@@ -403,8 +403,11 @@ def cmd_stream(a):
                         md = m.get("MetaData", {})
                         mmsi = md.get("MMSI")
                         mmsi_str = str(mmsi)
-                        if m["MessageType"] == "ShipStaticData":
-                            s = m["Message"]["ShipStaticData"]
+                        msg = m.get("Message") or {}
+                        if m.get("MessageType") == "ShipStaticData":
+                            s = msg.get("ShipStaticData")
+                            if s is None:
+                                continue
                             dim = s.get("Dimension", {})
                             loa = (dim.get("A", 0) or 0) + (dim.get("B", 0) or 0)
                             imo = s.get("ImoNumber")
@@ -420,7 +423,12 @@ def cmd_stream(a):
                                               f"(changement de pavillon probable, '{name}')")
                                     mmsi_imo_cache[mmsi_str] = str(imo)
                             continue
-                        p = m["Message"]["PositionReport"]
+                        # Autres MessageType que PositionReport/ShipStaticData ignorés (ex. types
+                        # non couverts par FilterMessageTypes mais quand même reçus côté serveur) :
+                        # on ignore silencieusement plutôt que de planter le collecteur entier.
+                        p = msg.get("PositionReport")
+                        if p is None:
+                            continue
                         nm, loa, dr, ty, imo_live = static.get(mmsi, ("", None, None, None, None))
                         # IMO connu pour ce MMSI : priorité au ShipStaticData reçu cette
                         # session, sinon on retombe sur le cache persistant (sessions
@@ -465,7 +473,7 @@ def cmd_stream(a):
                             _save_mmsi_imo_cache(a.cache, mmsi_imo_cache)
                             last_save = now
             except Exception as e:
-                print(f"\n[reconnexion après erreur] {e}")
+                print(f"\n[reconnexion après erreur] {type(e).__name__}: {e}")
                 _save_mmsi_imo_cache(a.cache, mmsi_imo_cache)
                 await asyncio.sleep(10)
 
