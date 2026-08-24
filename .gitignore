@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Données générées / secrets — ne doivent jamais être commités,
+# et ne vivent de toute façon jamais dans ce dépôt en déploiement
+# (voir deploy/README.md : tout ça va dans ~/aismap-data, hors du repo)
+*.jsonl
+mmsi_imo_cache.json
+targets.csv
+stream/
+*.env
