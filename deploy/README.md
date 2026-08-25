@@ -122,3 +122,11 @@ moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./dep
 rien de précieux ne doit y vivre. Tout ce qui doit survivre à une mise à jour — le cache
 MMSI→IMO, les `.jsonl` déjà collectés, la clé API — est dans `~/aismap-data`, en dehors du
 dépôt, donc jamais écrasé ni en conflit avec un `git pull`/`reset --hard`.
+
+## Mettre en pause et réactiver le code
+
+Mettre en pause le stream AIS, les updates depuis github et les sauvegardes cloud :
+`sudo systemctl disable --now aismap-stream.service aismap-update.timer aismap-backup.timer`
+
+Redémarrer le stream et les mise à jour du code depuis github :
+`sudo systemctl enable --now aismap-stream.service aismap-update.timer aismap-backup.timer`
