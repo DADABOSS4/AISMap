@@ -107,6 +107,7 @@ WorkingDirectory=$REPO_DIR
 EnvironmentFile=$ENV_FILE
 Environment=AISMAP_REPO_DIR=$REPO_DIR
 Environment=AISMAP_DATA_DIR=$DATA_DIR
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/bin/bash $REPO_DIR/deploy/run_stream.sh
 Restart=always
 RestartSec=10
@@ -144,7 +145,11 @@ WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now aismap-stream.service
+systemctl enable aismap-stream.service
+# restart (pas juste enable --now) : si le service tournait déjà avec une unité plus
+# ancienne, il faut le relancer pour qu'il prenne en compte les changements ci-dessus
+# (ex. PYTHONUNBUFFERED) — un simple `enable --now` sur un service déjà actif ne fait rien.
+systemctl restart aismap-stream.service
 systemctl enable --now aismap-update.timer
 
 echo
