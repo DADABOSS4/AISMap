@@ -1,4 +1,13 @@
-# Déploiement sur Raspberry Pi (100% via SSH, sans accès physique)
+# Déploiement sur Raspberry Pi (100% à distance, sans accès physique)
+
+Toutes les commandes ci-dessous sont montrées en `ssh pi@IP_DU_PI ...`, mais SSH n'est pas
+la seule option : **Raspberry Pi Connect** (https://connect.raspberrypi.com, intégré à
+Raspberry Pi OS) donne un accès shell distant depuis un navigateur, sans configurer de
+port forwarding ni connaître l'IP du Pi — pratique derrière un NAT/CGNAT ou un pare-feu
+restrictif. Une fois connecté (`rpi-connect signin` sur le Pi, puis session ouverte depuis
+connect.raspberrypi.com), il suffit d'ouvrir un terminal distant et d'y taper la commande
+qui suit `ssh pi@IP_DU_PI` dans les exemples ci-dessous — SSH reste la méthode la plus
+simple si le Pi est déjà joignable sur le réseau local.
 
 ## Installation initiale (une seule fois)
 
@@ -18,7 +27,7 @@ crée et démarre trois services systemd :
 
 - **aismap-stream** : le collecteur AIS (`coaster_heatmap.py stream`), tourne en continu,
   redémarre seul en cas de plantage ou de coupure réseau.
-- **aismap-update** (+ son timer) : toutes les 10 min, vérifie GitHub ; s'il y a du nouveau,
+- **aismap-update** (+ son timer) : toutes les 20 min, vérifie GitHub ; s'il y a du nouveau,
   applique le code (`git reset --hard` sur la branche suivie), régénère `targets.csv`, puis
   redémarre `aismap-stream`. S'il n'y a rien de nouveau, ne touche à rien (pas de coupure
   websocket pour rien).
@@ -30,7 +39,7 @@ crée et démarre trois services systemd :
 ## Ensuite, pour mettre à jour le Pi
 
 Rien à faire sur le Pi : un `git push` sur `main` est repris automatiquement en moins de
-10 minutes.
+20 minutes.
 
 Pour forcer une mise à jour immédiate sans attendre le timer :
 

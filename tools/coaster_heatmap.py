@@ -74,8 +74,6 @@ exactement ce pas de temps.
 Dépendances : pandas, numpy, matplotlib (obligatoires) ; folium et websockets (optionnels —
 folium pour la carte HTML, websockets pour 'stream').
 """
- 
-
 
 from __future__ import annotations
 
@@ -202,6 +200,9 @@ def _plot_grid(H, ye, xe, png, html, title, caption):
 
 
 def cmd_map(a):
+    """Trace la heatmap (PNG) et, si folium est installé, la carte HTML interactive,
+    à partir d'une grille déjà sauvegardée (--grid, produite par 'stream-map --grid-out').
+    """
     z = np.load(a.grid)
     H, ye, xe = z["H"], z["lat_edges"], z["lon_edges"]
     _plot_grid(H, ye, xe, a.png, a.html, a.title, a.caption)
@@ -343,6 +344,11 @@ def _save_mmsi_imo_cache(path, cache):
 
 
 def cmd_stream(a):
+    """Collecteur temps réel aisstream.io : boucle infinie, se reconnecte automatiquement
+    en cas d'erreur/coupure, écrit un .jsonl par jour UTC dans --out et entretient le
+    cache persistant MMSI->IMO (--cache). Cf. docstring du module pour le détail du
+    matching ('id' vs 'generic') et des arguments.
+    """
     try:
         import asyncio
         import websockets
@@ -501,26 +507,31 @@ def cmd_stream(a):
 # --------------------------------------------------------------------------------------
 
 def main():
+    """Point d'entrée CLI : une sous-commande par étape du pipeline (targets / stream /
+    stream-map / map), cf. docstring du module pour le détail de chacune.
+    """
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("targets")
+    s = sub.add_parser("targets", help="construit targets.csv depuis le CSV Nom/IMO/MMSI d'entrée")
     s.set_defaults(f=cmd_targets)
     s.add_argument("--input", default="coasters_multi_flottes_imo_mmsi.csv",
                    help="CSV d'entrée Nom;IMO;MMSI[;Armateur] (seule source, matching par ID uniquement)")
-    s.add_argument("--out", default="targets.csv")
+    s.add_argument("--out", default="targets.csv", help="fichier targets.csv de sortie")
 
-    s = sub.add_parser("map")
+    s = sub.add_parser("map", help="trace la heatmap à partir d'une grille .npz déjà construite")
     s.set_defaults(f=cmd_map)
-    s.add_argument("--grid", default="grid.npz")
-    s.add_argument("--png", default="heatmap.png")
-    s.add_argument("--html", default="heatmap.html")
+    s.add_argument("--grid", default="grid.npz", help="grille à tracer (produite par 'stream-map --grid-out')")
+    s.add_argument("--png", default="heatmap.png", help="image PNG de sortie")
+    s.add_argument("--html", default="heatmap.html", help="carte HTML interactive de sortie (ignorée si folium absent)")
     s.add_argument("--title", default="Présence des coasters (cargo, LOA 80-140 m, "
                                       "tirant d'eau 3-6 m ; + flottes identifiées "
-                                      "par MMSI/IMO) — aisstream.io")
+                                      "par MMSI/IMO) — aisstream.io",
+                   help="titre du graphique")
     s.add_argument("--caption", default="Source : aisstream.io (temps réel). "
-                                        "Pondéré en heures de présence par cellule.")
+                                        "Pondéré en heures de présence par cellule.",
+                   help="légende en bas de figure")
 
     s = sub.add_parser("stream-map",
                        help="carte directement depuis les .jsonl de 'stream'")
@@ -543,11 +554,11 @@ def main():
                                         "Pondéré en heures de présence par cellule (rééchantillonnage "
                                         "par navire), pas en nombre de messages bruts.")
 
-    s = sub.add_parser("stream")
+    s = sub.add_parser("stream", help="collecteur temps réel aisstream.io (boucle infinie)")
     s.set_defaults(f=cmd_stream)
-    s.add_argument("--key", required=True)
-    s.add_argument("--targets", default="targets.csv")
-    s.add_argument("--out", default="stream")
+    s.add_argument("--key", required=True, help="clé API aisstream.io")
+    s.add_argument("--targets", default="targets.csv", help="liste des navires cibles pour le matching")
+    s.add_argument("--out", default="stream", help="dossier de sortie des .jsonl")
     s.add_argument("--cache", default="mmsi_imo_cache.json",
                    help="cache persistant MMSI->IMO, réutilisé d'une session à l'autre")
 
