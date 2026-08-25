@@ -2,6 +2,19 @@
 
 Heatmap de présence des coasters d'Europe du Nord à partir d'AIS (flux temps réel aisstream.io).
 
+## Les 4 commandes du script
+
+`tools/coaster_heatmap.py` s'utilise via 4 sous-commandes, une par étape du pipeline :
+
+| Commande | Rôle | Qui la lance |
+|---|---|---|
+| `targets` | Régénère `targets.csv` (liste des navires à identifier par MMSI/IMO) depuis `coasters_multi_flottes_imo_mmsi.csv` | **Automatique** — appelée par `install.sh` et `update.sh` à chaque installation/mise à jour du Pi. À ne lancer toi-même que si tu testes en local. |
+| `stream` | Collecteur temps réel : se connecte à aisstream.io et tourne en continu (jours/semaines), écrit un `.jsonl` par jour | **Automatique** — tourne en service systemd (`aismap-stream`) sur le Pi, cf. `deploy/README.md`. |
+| `stream-map` | Construit la grille de présence directement depuis les `.jsonl` collectés et trace la carte (PNG + HTML) | **Manuel** — c'est la commande que tu lances en local pour générer la heatmap (voir ci-dessous). |
+| `map` | Retrace la carte à partir d'une grille déjà sauvegardée (via `stream-map --grid-out`), sans relire les `.jsonl` | **Manuel, optionnel** — utile pour ajuster titre/légende sans tout recalculer (les `.jsonl` peuvent peser plusieurs dizaines de Mo après quelques jours de collecte). |
+
+En pratique, au quotidien tu n'as besoin que de `stream-map` (section suivante) — `targets` et `stream` sont gérées par les services systemd, `map` n'est qu'un raccourci pour retracer plus vite.
+
 ## Déploiement
 
 Voir [`deploy/README.md`](deploy/README.md) pour installer et configurer le collecteur sur un Raspberry Pi.
