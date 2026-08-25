@@ -144,18 +144,18 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-# --- rclone (sauvegarde des .jsonl clos vers Proton Drive, pour libérer l'espace du Pi) ---
+# --- rclone (sauvegarde des .jsonl clos vers Google Drive, pour libérer l'espace du Pi) ---
 if ! command -v rclone >/dev/null 2>&1; then
     echo "Installation de rclone (script officiel)..."
     curl -fsSL https://rclone.org/install.sh | bash >/dev/null
 fi
 
-RCLONE_REMOTE="${AISMAP_RCLONE_REMOTE:-protondrive:aismap/stream}"
+RCLONE_REMOTE="${AISMAP_RCLONE_REMOTE:-gdrive:aismap/stream}"
 RCLONE_REMOTE_NAME="${RCLONE_REMOTE%%:*}"
 
 cat > /etc/systemd/system/aismap-backup.service <<EOF
 [Unit]
-Description=AISMap - envoie les .jsonl clos vers Proton Drive (rclone)
+Description=AISMap - envoie les .jsonl clos vers Google Drive (rclone)
 After=network-online.target
 Wants=network-online.target
 
@@ -169,7 +169,7 @@ EOF
 
 cat > /etc/systemd/system/aismap-backup.timer <<EOF
 [Unit]
-Description=AISMap - declenche la sauvegarde Proton Drive toutes les 6 heures
+Description=AISMap - declenche la sauvegarde Google Drive toutes les 6 heures
 
 [Timer]
 OnBootSec=10min
@@ -195,7 +195,7 @@ else
     systemctl disable aismap-backup.timer >/dev/null 2>&1 || true
     BACKUP_STATUS="EN ATTENTE : remote rclone '$RCLONE_REMOTE_NAME:' non configuré.
     1) en tant que $REAL_USER (pas root, pas de sudo) : rclone config
-       -> New remote, nom '$RCLONE_REMOTE_NAME', type 'protondrive', identifiants Proton
+       -> New remote, nom '$RCLONE_REMOTE_NAME', type 'drive' (Google Drive), account Google
     2) puis : sudo $REPO_DIR/deploy/install.sh (relançable sans risque)"
 fi
 
@@ -204,5 +204,5 @@ echo "Installation terminée."
 echo "  Statut du collecteur    : systemctl status aismap-stream"
 echo "  Logs en direct           : journalctl -u aismap-stream -f"
 echo "  Forcer une mise à jour   : sudo systemctl start aismap-update.service"
-echo "  Sauvegarde Proton Drive  : $BACKUP_STATUS"
+echo "  Sauvegarde Google Drive  : $BACKUP_STATUS"
 echo "  Logs de mise à jour     : journalctl -u aismap-update"

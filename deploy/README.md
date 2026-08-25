@@ -52,32 +52,36 @@ Pour forcer une mise à jour immédiate sans attendre le timer :
 (relancer `install.sh` est sans risque : il détecte ce qui existe déjà et ne recrée que ce
 qui manque, sauf la clé API explicitement fournie en variable d'environnement.)
 
-## Sauvegarde vers Proton Drive (libère l'espace du Pi)
+## Sauvegarde vers Google Drive (libère l'espace du Pi)
 
-`rclone` gère le transfert (backend Proton Drive officiel côté rclone). `install.sh`
-l'installe automatiquement, mais **la connexion à ton compte Proton reste une étape
-manuelle** — impossible à scripter sans manipuler ton mot de passe/2FA en clair.
+`rclone` gère le transfert (backend Google Drive officiel côté rclone). `install.sh`
+l'installe automatiquement, mais **la connexion à ton compte Google reste une étape
+manuelle** — elle utilise OAuth2, bien plus sûr qu'un mot de passe en clair.
 
 À faire une seule fois, en SSH, **en tant qu'utilisateur normal (pas root, pas de sudo)** :
 
     ssh pi@IP_DU_PI
     rclone config
     # > n (New remote)
-    # > name: protondrive
-    # > Storage: protondrive (chercher "Proton Drive" dans la liste)
-    # > renseigner identifiant / mot de passe Proton, code 2FA si demandé
+    # > name: gdrive
+    # > Storage: drive (chercher "Google Drive" dans la liste, numéro 14 env.)
+    # > client_id/secret: laisser vides (utilise le client par défaut de rclone)
+    # > scope: lecteur/writer plein accès
+    # > service_account_file: laisser vide
+    # > y (confirmer l'authentification) — le navigateur s'ouvrira pour approuver l'accès
+    # > N pour ne pas utiliser d'ID équipe
     # > y (confirmer), q (quitter)
 
 Puis réactiver l'installation pour que le timer démarre :
 
     cd ~/aismap && sudo ./deploy/install.sh
 
-(`install.sh` détecte automatiquement le remote `protondrive:` et active
+(`install.sh` détecte automatiquement le remote `gdrive:` et active
 `aismap-backup.timer` — sans lui, la sauvegarde reste installée mais désactivée, et
 `install.sh` te le rappelle à chaque exécution.)
 
 Ce qui part : uniquement les `.jsonl` sans écriture depuis plus de 26h (donc jamais le
-fichier du jour en cours), vers `protondrive:aismap/stream`, supprimés localement
+fichier du jour en cours), vers `gdrive:aismap/stream`, supprimés localement
 seulement après confirmation du transfert par rclone.
 
 Commandes utiles :
@@ -86,7 +90,7 @@ Commandes utiles :
     ssh pi@IP_DU_PI journalctl -u aismap-backup -n 50             # historique des transferts
 
 Pour changer la destination (dossier/nom de remote) : variable `AISMAP_RCLONE_REMOTE` au
-moment d'installer, ex. `AISMAP_RCLONE_REMOTE=protondrive:autre/dossier sudo -E ./deploy/install.sh`.
+moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./deploy/install.sh`.
 
 ## Arborescence sur le Pi
 

@@ -2,7 +2,7 @@
 # Lancé par le service systemd aismap-backup (déclenché par aismap-backup.timer, toutes
 # les 6h, ou manuellement via `sudo systemctl start aismap-backup.service`).
 #
-# Envoie vers Proton Drive (via rclone) les .jsonl "clos", puis les supprime localement
+# Envoie vers Google Drive (via rclone) les .jsonl "clos", puis les supprime localement
 # une fois le transfert confirmé (rclone move ne supprime jamais avant d'avoir vérifié le
 # transfert). Ne touche JAMAIS le fichier du jour en cours d'écriture par aismap-stream :
 # on ne le sélectionne pas par date dans le nom, mais par âge de dernière modification
