@@ -14,7 +14,7 @@ Puis sur le Pi :
 
 Le script demande la clé API aisstream.io (saisie masquée), installe Python/venv/les
 dépendances, génère `targets.csv` depuis `tools/coasters_multi_flottes_imo_mmsi.csv`, puis
-crée et démarre deux services systemd :
+crée et démarre trois services systemd :
 
 - **aismap-stream** : le collecteur AIS (`coaster_heatmap.py stream`), tourne en continu,
   redémarre seul en cas de plantage ou de coupure réseau.
@@ -22,6 +22,10 @@ crée et démarre deux services systemd :
   applique le code (`git reset --hard` sur la branche suivie), régénère `targets.csv`, puis
   redémarre `aismap-stream`. S'il n'y a rien de nouveau, ne touche à rien (pas de coupure
   websocket pour rien).
+- **aismap-backup** (+ son timer) : toutes les 6h, envoie vers Proton Drive les `.jsonl`
+  clos (jamais celui du jour en cours) et les supprime localement une fois l'envoi
+  confirmé — pour ne pas remplir la carte SD. Désactivé tant que rclone n'est pas
+  configuré (voir plus bas).
 
 ## Ensuite, pour mettre à jour le Pi
 
@@ -48,6 +52,42 @@ Pour forcer une mise à jour immédiate sans attendre le timer :
 (relancer `install.sh` est sans risque : il détecte ce qui existe déjà et ne recrée que ce
 qui manque, sauf la clé API explicitement fournie en variable d'environnement.)
 
+## Sauvegarde vers Proton Drive (libère l'espace du Pi)
+
+`rclone` gère le transfert (backend Proton Drive officiel côté rclone). `install.sh`
+l'installe automatiquement, mais **la connexion à ton compte Proton reste une étape
+manuelle** — impossible à scripter sans manipuler ton mot de passe/2FA en clair.
+
+À faire une seule fois, en SSH, **en tant qu'utilisateur normal (pas root, pas de sudo)** :
+
+    ssh pi@IP_DU_PI
+    rclone config
+    # > n (New remote)
+    # > name: protondrive
+    # > Storage: protondrive (chercher "Proton Drive" dans la liste)
+    # > renseigner identifiant / mot de passe Proton, code 2FA si demandé
+    # > y (confirmer), q (quitter)
+
+Puis réactiver l'installation pour que le timer démarre :
+
+    cd ~/aismap && sudo ./deploy/install.sh
+
+(`install.sh` détecte automatiquement le remote `protondrive:` et active
+`aismap-backup.timer` — sans lui, la sauvegarde reste installée mais désactivée, et
+`install.sh` te le rappelle à chaque exécution.)
+
+Ce qui part : uniquement les `.jsonl` sans écriture depuis plus de 26h (donc jamais le
+fichier du jour en cours), vers `protondrive:aismap/stream`, supprimés localement
+seulement après confirmation du transfert par rclone.
+
+Commandes utiles :
+
+    ssh pi@IP_DU_PI sudo systemctl start aismap-backup.service   # forcer une sauvegarde
+    ssh pi@IP_DU_PI journalctl -u aismap-backup -n 50             # historique des transferts
+
+Pour changer la destination (dossier/nom de remote) : variable `AISMAP_RCLONE_REMOTE` au
+moment d'installer, ex. `AISMAP_RCLONE_REMOTE=protondrive:autre/dossier sudo -E ./deploy/install.sh`.
+
 ## Arborescence sur le Pi
 
     ~/aismap/                   dépôt git (code) — écrasé/synchronisé à chaque update,
@@ -58,7 +98,10 @@ qui manque, sauf la clé API explicitement fournie en variable d'environnement.)
       targets.csv                régénéré à chaque update depuis
                                   tools/coasters_multi_flottes_imo_mmsi.csv (source unique)
       mmsi_imo_cache.json         cache persistant MMSI->IMO, survit aux mises à jour/redémarrages
-      stream/                     fichiers .jsonl collectés (ais-YYYY-MM-DD.jsonl)
+      stream/                     fichiers .jsonl collectés (ais-YYYY-MM-DD.jsonl), purgés
+                                  au fil de l'eau vers Proton Drive une fois clos
+    ~/.config/rclone/rclone.conf  identifiants Proton Drive (créé par `rclone config`,
+                                  hors du dépôt, chmod 600 par rclone)
 
 ## Pourquoi cette séparation code / données
 
