@@ -390,15 +390,27 @@ def cmd_stream(a):
 
     async def run():
         static = {}   # mmsi -> (name, loa, draught, type, imo)
-        n = 0
+        n = 0       # positions coaster écrites dans les .jsonl
+        n_raw = 0   # messages AIS reçus, tous types confondus (preuve que la clé API/l'abonnement fonctionnent)
         loop = asyncio.get_event_loop()
         last_save = loop.time()
+        last_status = loop.time()
         while True:
             try:
                 async with websockets.connect("wss://stream.aisstream.io/v0/stream",
                                               ping_interval=20, max_size=None) as ws:
                     await ws.send(json.dumps(sub))
+                    print("[connexion] websocket ouverte, abonnement envoyé à aisstream.io.")
+                    connected_at = loop.time()
                     async for raw in ws:
+                        n_raw += 1
+                        now = loop.time()
+                        if now - last_status > 60:
+                            print(f"[status] connecté depuis {int(now - connected_at)}s | "
+                                  f"{n_raw:,} messages AIS reçus (preuve que la clé API est acceptée) | "
+                                  f"{n:,} positions coaster écrites dans {a.out} | "
+                                  f"{len(static):,} navires vus | cache MMSI->IMO : {len(mmsi_imo_cache):,}")
+                            last_status = now
                         m = json.loads(raw)
                         md = m.get("MetaData", {})
                         mmsi = md.get("MMSI")
@@ -419,7 +431,7 @@ def cmd_stream(a):
                                 prev_imo = mmsi_imo_cache.get(mmsi_str)
                                 if prev_imo != str(imo):
                                     if prev_imo:
-                                        print(f"\n[cache] MMSI {mmsi_str} : IMO {prev_imo} -> {imo} "
+                                        print(f"[cache] MMSI {mmsi_str} : IMO {prev_imo} -> {imo} "
                                               f"(changement de pavillon probable, '{name}')")
                                     mmsi_imo_cache[mmsi_str] = str(imo)
                             continue
@@ -464,16 +476,16 @@ def cmd_stream(a):
                         with open(os.path.join(a.out, f"ais-{day}.jsonl"), "a") as f:
                             f.write(json.dumps(rec) + "\n")
                         n += 1
-                        if n % 500 == 0:
-                            print(f"\r{n:,} positions retenues | {len(static):,} navires vus | "
-                                  f"{len(mmsi_imo_cache):,} MMSI->IMO en cache", end="", flush=True)
 
-                        now = loop.time()
                         if now - last_save > 60:
                             _save_mmsi_imo_cache(a.cache, mmsi_imo_cache)
                             last_save = now
             except Exception as e:
-                print(f"\n[reconnexion après erreur] {type(e).__name__}: {e}")
+                detail = f"{type(e).__name__}: {e}"
+                print(f"[reconnexion après erreur] {detail}")
+                if any(tok in detail for tok in ("401", "403", "Unauthorized", "Forbidden", "InvalidStatus")):
+                    print("[indice] ça ressemble à un refus d'authentification par aisstream.io "
+                          "-> vérifier la clé API (--key / AISSTREAM_API_KEY).")
                 _save_mmsi_imo_cache(a.cache, mmsi_imo_cache)
                 await asyncio.sleep(10)
 
