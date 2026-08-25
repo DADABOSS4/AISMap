@@ -130,14 +130,14 @@ Environment=AISMAP_BRANCH=$BRANCH
 ExecStart=/bin/bash $REPO_DIR/deploy/update.sh
 EOF
 
-# --- Timer : déclenche aismap-update toutes les 10 min ---
+# --- Timer : déclenche aismap-update toutes les 20 min ---
 cat > /etc/systemd/system/aismap-update.timer <<EOF
 [Unit]
-Description=AISMap - verifie les mises a jour GitHub toutes les 10 minutes
+Description=AISMap - verifie les mises a jour GitHub toutes les 20 minutes
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=10min
+OnUnitActiveSec=20min
 Persistent=true
 
 [Install]
