@@ -111,6 +111,13 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/bin/bash $REPO_DIR/deploy/run_stream.sh
 Restart=always
 RestartSec=10
+# Filet de sécurité mémoire : le process tourne des semaines sans interruption et garde en
+# RAM un dict non purgé (un navire vu par ShipStaticData reste en mémoire jusqu'à l'arrêt du
+# process) — sur un Pi à faible RAM, mieux vaut que systemd tue et relance PROPREMENT ce
+# service (Restart=always ci-dessus) plutôt que de laisser une dérive mémoire affamer tout le
+# reste du système (SSH, bureau, etc.). ~80 Mo constatés en usage normal ; ajuster à la RAM
+# réelle du Pi si besoin (voir free -h).
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

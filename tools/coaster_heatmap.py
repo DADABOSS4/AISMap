@@ -517,7 +517,7 @@ def cmd_stream(a):
         while True:
             try:
                 async with websockets.connect("wss://stream.aisstream.io/v0/stream",
-                                              ping_interval=20, max_size=None) as ws:
+                                              ping_interval=20) as ws:
                     await ws.send(json.dumps(sub))
                     print("[connexion] websocket ouverte, abonnement envoyé à aisstream.io.")
                     connected_at = loop.time()
