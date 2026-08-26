@@ -11,10 +11,14 @@
 #
 # AISMAP_BACKUP_INCLUDE_TODAY=1 (via `sudo systemctl start aismap-backup-full.service`,
 # cf. install.sh) force aussi l'envoi du fichier du jour en cours, pour avoir des données
-# plus fraîches que 26h avant de générer une carte. Petit risque accepté : le fichier du
-# jour peut être fragmenté en plusieurs objets Drive si on relance cette commande plusieurs
-# fois dans la journée (le nouveau move repart d'un fichier vide, recréé par
-# aismap-stream à l'écriture suivante) — aucune perte de données côté collecteur.
+# plus fraîches que 26h avant de générer une carte. Ce fichier est activement réécrit par
+# aismap-stream pendant le transfert : --local-no-check-updated désactive le refus par
+# défaut de rclone ("can't copy - source file is being updated") sur un fichier dont la
+# taille change en cours de lecture. Risque accepté : les toutes dernières lignes ajoutées
+# pendant la fenêtre de transfert (quelques secondes) peuvent être perdues, le fichier
+# local étant supprimé après le transfert même s'il a grossi entre-temps — rien de grave,
+# elles seront simplement absentes de cette sauvegarde (le fichier repart de zéro et se
+# reremplit normalement à la prochaine écriture d'aismap-stream).
 set -euo pipefail
 
 DATA_DIR="${AISMAP_DATA_DIR:?AISMAP_DATA_DIR non défini}"
@@ -26,16 +30,16 @@ if ! rclone listremotes 2>/dev/null | grep -q "^${REMOTE_NAME}:$"; then
     exit 0
 fi
 
-MIN_AGE_ARGS=(--min-age 26h)
+EXTRA_ARGS=(--min-age 26h)
 if [ "${AISMAP_BACKUP_INCLUDE_TODAY:-0}" = "1" ]; then
-    MIN_AGE_ARGS=()
-    echo "[backup] AISMAP_BACKUP_INCLUDE_TODAY=1 : envoi aussi du fichier du jour en cours."
+    EXTRA_ARGS=(--local-no-check-updated)
+    echo "[backup] AISMAP_BACKUP_INCLUDE_TODAY=1 : envoi aussi du fichier du jour en cours (encore en écriture)."
 fi
 
 echo "[backup] envoi vers $REMOTE des .jsonl..."
 rclone move "$DATA_DIR/stream" "$REMOTE" \
     --include "ais-*.jsonl" \
-    "${MIN_AGE_ARGS[@]}" \
+    "${EXTRA_ARGS[@]}" \
     --transfers 4 \
     --stats-one-line -v
 echo "[backup] terminé."

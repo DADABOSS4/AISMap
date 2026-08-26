@@ -106,10 +106,11 @@ jour, cf. README.md racine) :
 
     ssh pi@IP_DU_PI sudo systemctl start aismap-backup-full.service
 
-Petit compromis accepté : si tu relances cette commande plusieurs fois dans la journée, le
-fichier du jour peut se retrouver fragmenté en plusieurs objets sur Drive (aucune perte de
-données côté collecteur, qui recrée simplement le fichier local à l'écriture suivante). Ce
-service n'a pas de timer — déclenchement manuel uniquement.
+Petit compromis accepté : le fichier du jour est activement réécrit par `aismap-stream`
+pendant le transfert, donc les toutes dernières lignes ajoutées pendant la fenêtre de
+transfert (quelques secondes) peuvent être absentes de cette sauvegarde — rien de grave,
+le fichier repart de zéro et se reremplit normalement. Ce service n'a pas de timer —
+déclenchement manuel uniquement.
 
 Pour changer la destination (dossier/nom de remote) : variable `AISMAP_RCLONE_REMOTE` au
 moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./deploy/install.sh`
