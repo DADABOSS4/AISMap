@@ -1,0 +1,13 @@
+# Dépendances pour générer la heatmap en local (commandes 'stream-map' / 'map'),
+# à installer sur ta machine, pas sur le Pi (voir requirements-pi.txt pour le Pi).
+pandas
+numpy
+matplotlib
+
+# Optionnel : carte HTML interactive (sinon --html est ignoré).
+folium
+
+# Optionnel : fond de côtes/frontières sur le PNG (sinon dégradation propre, PNG sans fond
+# de carte). Installation parfois plus lourde (dépendances géo natives) — décommente si tu
+# la veux :
+# cartopy

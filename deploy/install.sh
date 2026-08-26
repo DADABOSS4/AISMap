@@ -64,7 +64,7 @@ if [ ! -d "$DATA_DIR/venv" ]; then
     sudo -u "$REAL_USER" python3 -m venv "$DATA_DIR/venv"
 fi
 sudo -u "$REAL_USER" "$DATA_DIR/venv/bin/pip" install --quiet --upgrade pip
-sudo -u "$REAL_USER" "$DATA_DIR/venv/bin/pip" install --quiet pandas numpy websockets
+sudo -u "$REAL_USER" "$DATA_DIR/venv/bin/pip" install --quiet -r "$REPO_DIR/requirements-pi.txt"
 
 # --- Clé API : fichier d'environnement séparé du code, jamais dans git ---
 if [ -n "${AISSTREAM_API_KEY:-}" ]; then
@@ -164,6 +164,24 @@ Type=oneshot
 User=$REAL_USER
 Environment=AISMAP_DATA_DIR=$DATA_DIR
 Environment=AISMAP_RCLONE_REMOTE=$RCLONE_REMOTE
+ExecStart=/bin/bash $REPO_DIR/deploy/backup.sh
+EOF
+
+# Service jumeau, déclenchement manuel uniquement (pas de timer) : envoie aussi le fichier
+# du jour en cours, pour avoir des données plus fraîches que 26h avant de générer une carte
+# en local (cf. deploy/backup.sh pour le détail/petit risque accepté).
+cat > /etc/systemd/system/aismap-backup-full.service <<EOF
+[Unit]
+Description=AISMap - envoie TOUS les .jsonl (y compris celui du jour) vers Google Drive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=$REAL_USER
+Environment=AISMAP_DATA_DIR=$DATA_DIR
+Environment=AISMAP_RCLONE_REMOTE=$RCLONE_REMOTE
+Environment=AISMAP_BACKUP_INCLUDE_TODAY=1
 ExecStart=/bin/bash $REPO_DIR/deploy/backup.sh
 EOF
 

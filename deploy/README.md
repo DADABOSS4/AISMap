@@ -31,7 +31,7 @@ crée et démarre trois services systemd :
   applique le code (`git reset --hard` sur la branche suivie), régénère `targets.csv`, puis
   redémarre `aismap-stream`. S'il n'y a rien de nouveau, ne touche à rien (pas de coupure
   websocket pour rien).
-- **aismap-backup** (+ son timer) : toutes les 6h, envoie vers Proton Drive les `.jsonl`
+- **aismap-backup** (+ son timer) : toutes les 6h, envoie vers Google Drive les `.jsonl`
   clos (jamais celui du jour en cours) et les supprime localement une fois l'envoi
   confirmé — pour ne pas remplir la carte SD. Désactivé tant que rclone n'est pas
   configuré (voir plus bas).
@@ -89,17 +89,31 @@ Puis réactiver l'installation pour que le timer démarre :
 `aismap-backup.timer` — sans lui, la sauvegarde reste installée mais désactivée, et
 `install.sh` te le rappelle à chaque exécution.)
 
-Ce qui part : uniquement les `.jsonl` sans écriture depuis plus de 26h (donc jamais le
-fichier du jour en cours), vers `gdrive:aismap/stream`, supprimés localement
+Ce qui part par défaut : uniquement les `.jsonl` sans écriture depuis plus de 26h (donc
+jamais le fichier du jour en cours), vers `gdrive:aismap/stream`, supprimés localement
 seulement après confirmation du transfert par rclone.
 
 Commandes utiles :
 
-    ssh pi@IP_DU_PI sudo systemctl start aismap-backup.service   # forcer une sauvegarde
+    ssh pi@IP_DU_PI sudo systemctl start aismap-backup.service   # forcer une sauvegarde (>26h uniquement)
     ssh pi@IP_DU_PI journalctl -u aismap-backup -n 50             # historique des transferts
 
+### Avoir des données plus fraîches que 26h (avant de générer une carte)
+
+Le job planifié ci-dessus n'envoie jamais le fichier du jour en cours, même déclenché
+manuellement. Pour l'inclure quand même (ex. juste avant de générer une carte en local à
+jour, cf. README.md racine) :
+
+    ssh pi@IP_DU_PI sudo systemctl start aismap-backup-full.service
+
+Petit compromis accepté : si tu relances cette commande plusieurs fois dans la journée, le
+fichier du jour peut se retrouver fragmenté en plusieurs objets sur Drive (aucune perte de
+données côté collecteur, qui recrée simplement le fichier local à l'écriture suivante). Ce
+service n'a pas de timer — déclenchement manuel uniquement.
+
 Pour changer la destination (dossier/nom de remote) : variable `AISMAP_RCLONE_REMOTE` au
-moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./deploy/install.sh`.
+moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./deploy/install.sh`
+(s'applique aux deux services, `aismap-backup` et `aismap-backup-full`).
 
 ## Arborescence sur le Pi
 
@@ -112,8 +126,8 @@ moment d'installer, ex. `AISMAP_RCLONE_REMOTE=gdrive:autre/dossier sudo -E ./dep
                                   tools/coasters_multi_flottes_imo_mmsi.csv (source unique)
       mmsi_imo_cache.json         cache persistant MMSI->IMO, survit aux mises à jour/redémarrages
       stream/                     fichiers .jsonl collectés (ais-YYYY-MM-DD.jsonl), purgés
-                                  au fil de l'eau vers Proton Drive une fois clos
-    ~/.config/rclone/rclone.conf  identifiants Proton Drive (créé par `rclone config`,
+                                  au fil de l'eau vers Google Drive une fois clos
+    ~/.config/rclone/rclone.conf  identifiants Google Drive (créé par `rclone config`,
                                   hors du dépôt, chmod 600 par rclone)
 
 ## Pourquoi cette séparation code / données

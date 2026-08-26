@@ -11,3 +11,10 @@ mmsi_imo_cache.json
 targets.csv
 stream/
 *.env
+
+# Sorties de carte générées en local (voir README.md) — jamais committées, la commande
+# par défaut les écrit à la racine du dépôt cloné.
+heatmap.png
+heatmap.html
+grid.npz
+out/

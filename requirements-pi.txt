@@ -1,0 +1,5 @@
+# Dépendances installées sur le Pi par deploy/install.sh (collecteur uniquement).
+# Pour générer des cartes en local, voir requirements-map.txt.
+pandas
+numpy
+websockets

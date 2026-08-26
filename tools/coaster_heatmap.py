@@ -39,31 +39,38 @@ stream — collecteur temps réel, boucle infinie (Ctrl+C pour arrêter), à lai
    construction de targets.csv, sans jamais avoir à corriger ce dernier à la main.
 
 stream-map — construit la grille (heures de présence) directement depuis les .jsonl de
-             'stream' et trace la carte.
-    --dir DOSSIER           dossier contenant les ais-*.jsonl (défaut : stream, sortie de
-                            'stream')
-    --mode {id,generic,all} filtre sur le champ 'match' (défaut : all)
+             'stream' et trace la carte. Affiche aussi un résumé (période couverte, top 5
+             des cellules les plus fréquentées) après calcul de la grille.
+    --dir DOSSIER           dossier contenant les ais-*.jsonl (défaut : stream, ou
+                            AISMAP_DRIVE_DIR dans aismap.local.env)
+    --mode {id,generic,all} filtre sur le champ 'match' (défaut : all, ou AISMAP_MODE)
     --cruising-status {cruising,harbour}
                             filtre sur le SOG : 'cruising' garde SOG>0 (navire en route),
                             'harbour' garde SOG==0 (navire à quai/mouillage) ; non renseigné
-                            (défaut) = les deux confondus. Une position à SOG inconnu est
-                            écartée dès que ce filtre est actif.
-    --step-min N            pas de rééchantillonnage en minutes (défaut : 5)
-    --cell-deg V             taille de cellule en ° de latitude (défaut : 0.01, ~1,1 km) —
-                            à augmenter (ex. 0.05) si peu de données collectées, sinon la
-                            grille sera trop clairsemée
+                            (défaut, ou AISMAP_CRUISING_STATUS) = les deux confondus. Une
+                            position à SOG inconnu est écartée dès que ce filtre est actif.
+    --step-min N            pas de rééchantillonnage en minutes (défaut : 5, ou AISMAP_STEP_MIN)
+    --cell-deg V             taille de cellule en ° de latitude (défaut : 0.01, ~1,1 km, ou
+                            AISMAP_CELL_DEG) — à augmenter (ex. 0.05) si peu de données
+                            collectées, sinon la grille sera trop clairsemée
     --grid-out FICHIER       si fourni, sauvegarde aussi la grille en .npz, réutilisable
                             ensuite avec 'map --grid' sans relire les .jsonl (défaut : aucun)
     --png / --html / --title / --caption   mêmes réglages que 'map'
 
 map — trace la heatmap (PNG) et, si folium est installé, une carte HTML interactive,
       à partir d'un grid.npz déjà construit (par 'stream-map --grid-out').
-    --grid FICHIER      grille à tracer (défaut : grid.npz)
-    --png FICHIER       image de sortie (défaut : heatmap.png)
+    --grid FICHIER      grille à tracer (défaut : out/grid-<date du jour>.npz)
+    --png FICHIER       image de sortie (défaut : out/heatmap-<date du jour>.png)
     --html FICHIER      carte interactive de sortie, ignorée si folium absent
-                        (défaut : heatmap.html)
+                        (défaut : out/heatmap-<date du jour>.html)
     --title TEXTE       titre du graphique
     --caption TEXTE     légende en bas de figure
+
+Config locale optionnelle : si un fichier aismap.local.env existe dans le dossier courant
+(voir aismap.local.env.example), ses valeurs préremplissent les défauts ci-dessus
+(AISMAP_DRIVE_DIR, AISMAP_MAP_OUT_DIR, AISMAP_MODE, AISMAP_CRUISING_STATUS,
+AISMAP_STEP_MIN, AISMAP_CELL_DEG) — un flag explicite sur la ligne de commande prime
+toujours dessus.
 
 Métrique de la heatmap : HEURES DE PRÉSENCE par cellule (comme EMODnet), pas le nombre de
 messages AIS bruts. Un navire à quai émet à une cadence différente d'un navire en route :
@@ -71,8 +78,9 @@ compter les messages bruts biaiserait la carte vers les ports. On rééchantillo
 trace à pas fixe (défaut 5 min, réglable via --step-min) et chaque point retenu vaut
 exactement ce pas de temps.
 
-Dépendances : pandas, numpy, matplotlib (obligatoires) ; folium et websockets (optionnels —
-folium pour la carte HTML, websockets pour 'stream').
+Dépendances : pandas, numpy, matplotlib (obligatoires) ; folium, cartopy et websockets
+(optionnels — folium pour la carte HTML, cartopy pour le fond de côtes sur le PNG,
+websockets pour 'stream'). Voir requirements-map.txt / requirements-pi.txt.
 """
 
 from __future__ import annotations
@@ -101,6 +109,60 @@ BBOX = dict(lat_min=48.0, lat_max=64.0, lon_min=-10.0, lon_max=22.0)
 # les caboteurs fluvio-maritimes et les servitudes tout en gardant les coasters ~2 000 DWT.
 COASTER_LOA = (60.0, 140.0)
 COASTER_DRAUGHT = (2.0, 8.0)
+
+
+# --------------------------------------------------------------------------------------
+# Config locale optionnelle (génération de carte en local) — voir aismap.local.env.example
+# --------------------------------------------------------------------------------------
+
+LOCAL_CONFIG_FILE = "aismap.local.env"
+
+
+def _load_local_config(path=LOCAL_CONFIG_FILE):
+    """Charge une config locale optionnelle (une ligne KEY=value, '#' pour commenter) si
+    le fichier existe dans le dossier courant. Sert uniquement à préremplir les valeurs
+    par défaut de la CLI de génération de carte : un flag explicite sur la ligne de
+    commande prime toujours sur ces valeurs. Absent par défaut, aucun effet si non créé.
+    """
+    cfg = {}
+    if not os.path.exists(path):
+        return cfg
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            cfg[key.strip()] = value.strip()
+    return cfg
+
+
+def _config_choice(config, key, choices, default):
+    """Lit une valeur de config à choix contraint (ex. AISMAP_MODE) ; ignore et prévient
+    si la valeur ne fait pas partie des choix valides plutôt que de planter au parsing.
+    """
+    val = config.get(key)
+    if val is None:
+        return default
+    if val not in choices:
+        print(f"[config] {key}={val!r} invalide dans {LOCAL_CONFIG_FILE} "
+              f"(attendu parmi {choices}) — ignoré.")
+        return default
+    return val
+
+
+def _map_output_defaults(config):
+    """Calcule les chemins de sortie par défaut de 'stream-map'/'map' : dossier
+    AISMAP_MAP_OUT_DIR (défaut 'out/'), fichiers horodatés à la date du jour pour garder
+    un historique au lieu d'écraser la carte précédente à chaque run.
+    """
+    out_dir = config.get("AISMAP_MAP_OUT_DIR", "out")
+    today = datetime.now().strftime("%Y-%m-%d")
+    return dict(
+        png=os.path.join(out_dir, f"heatmap-{today}.png"),
+        html=os.path.join(out_dir, f"heatmap-{today}.html"),
+        grid=os.path.join(out_dir, f"grid-{today}.npz"),
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -145,6 +207,11 @@ def _plot_grid(H, ye, xe, png, html, title, caption):
     Factorisé pour être appelé aussi bien depuis un grid.npz (cmd_map) que depuis
     une grille reconstruite directement en mémoire depuis des .jsonl (cmd_stream_map).
     Un carré rouge matérialise BBOX (l'emprise de collecte) sur les deux sorties.
+
+    Fond de côtes/frontières sur le PNG via cartopy si installé (optionnel, cf.
+    requirements-map.txt) : sans lui le PNG reste utilisable mais sans repère
+    géographique, seulement la grille + le cadre BBOX (dégradation propre, comme pour
+    folium/HTML plus bas).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -152,27 +219,59 @@ def _plot_grid(H, ye, xe, png, html, title, caption):
     from matplotlib.colors import LogNorm
     from matplotlib.patches import Rectangle
 
+    try:
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        has_cartopy = True
+    except ImportError:
+        has_cartopy = False
+
     Hm = np.ma.masked_where(H <= 0, H)
 
-    fig, ax = plt.subplots(figsize=(11, 8), dpi=150)
-    mesh = ax.pcolormesh(xe, ye, Hm, norm=LogNorm(vmin=max(Hm.min(), 0.08), vmax=Hm.max()),
-                         cmap="inferno", shading="auto")
-    ax.add_patch(Rectangle(
-        (BBOX["lon_min"], BBOX["lat_min"]),
-        BBOX["lon_max"] - BBOX["lon_min"], BBOX["lat_max"] - BBOX["lat_min"],
-        fill=False, edgecolor="red", linewidth=1.5, linestyle="--", zorder=5,
-    ))
-    ax.set_aspect(1 / np.cos(np.deg2rad(np.mean(ye))))
-    ax.set_xlabel("Longitude (°E)")
-    ax.set_ylabel("Latitude (°N)")
+    for out_path in (png, html):
+        if out_path and os.path.dirname(out_path):
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    fig = plt.figure(figsize=(11, 8), dpi=150)
+    if has_cartopy:
+        proj = ccrs.PlateCarree()
+        ax = fig.add_subplot(1, 1, 1, projection=proj)
+        ax.set_extent([xe.min(), xe.max(), ye.min(), ye.max()], crs=proj)
+        ax.add_feature(cfeature.LAND, facecolor="0.92", zorder=0)
+        ax.add_feature(cfeature.COASTLINE, edgecolor="0.4", linewidth=0.6, zorder=1)
+        ax.add_feature(cfeature.BORDERS, edgecolor="0.6", linewidth=0.4, linestyle=":", zorder=1)
+        mesh = ax.pcolormesh(xe, ye, Hm, norm=LogNorm(vmin=max(Hm.min(), 0.08), vmax=Hm.max()),
+                             cmap="inferno", shading="auto", transform=proj, zorder=2)
+        ax.add_patch(Rectangle(
+            (BBOX["lon_min"], BBOX["lat_min"]),
+            BBOX["lon_max"] - BBOX["lon_min"], BBOX["lat_max"] - BBOX["lat_min"],
+            fill=False, edgecolor="red", linewidth=1.5, linestyle="--", zorder=5,
+            transform=proj,
+        ))
+        ax.gridlines(draw_labels=True, alpha=0.15, linewidth=0.4, color="0.3")
+    else:
+        ax = fig.add_subplot(1, 1, 1)
+        mesh = ax.pcolormesh(xe, ye, Hm, norm=LogNorm(vmin=max(Hm.min(), 0.08), vmax=Hm.max()),
+                             cmap="inferno", shading="auto")
+        ax.add_patch(Rectangle(
+            (BBOX["lon_min"], BBOX["lat_min"]),
+            BBOX["lon_max"] - BBOX["lon_min"], BBOX["lat_max"] - BBOX["lat_min"],
+            fill=False, edgecolor="red", linewidth=1.5, linestyle="--", zorder=5,
+        ))
+        ax.set_aspect(1 / np.cos(np.deg2rad(np.mean(ye))))
+        ax.set_xlabel("Longitude (°E)")
+        ax.set_ylabel("Latitude (°N)")
+        ax.grid(alpha=0.15, lw=0.4)
+
     ax.set_title(title, fontsize=12)
     cb = fig.colorbar(mesh, ax=ax, shrink=0.85)
     cb.set_label("Heures de présence par cellule (échelle log)")
-    ax.grid(alpha=0.15, lw=0.4)
+    if not has_cartopy:
+        caption = caption + " (pip install cartopy pour un fond de côtes/frontières.)"
     fig.text(0.01, 0.01, caption, fontsize=7, color="0.35")
     fig.tight_layout()
     fig.savefig(png, bbox_inches="tight")
-    print(f"-> {png}")
+    print(f"-> {png}" + (" (avec fond de côtes cartopy)" if has_cartopy else ""))
 
     if html:
         try:
@@ -262,6 +361,7 @@ def cmd_stream_map(a):
     for k in ("id", "generic"):
         n = df.loc[df["match"] == k, "mmsi"].nunique()
         print(f"  dont match='{k}': {n} navires")
+    print(f"Période couverte : {df['ts_dt'].min()} -> {df['ts_dt'].max()} (UTC).")
 
     df = df[df["lat"].between(BBOX["lat_min"], BBOX["lat_max"]) &
             df["lon"].between(BBOX["lon_min"], BBOX["lon_max"])]
@@ -275,7 +375,20 @@ def cmd_stream_map(a):
                                        [BBOX["lon_min"], BBOX["lon_max"]]],
                                 weights=df["hours"])
 
+    # Résumé rapide des zones les plus fréquentées, sans avoir à ouvrir l'image.
+    top_n = min(5, int((H > 0).sum()))
+    if top_n:
+        yc = (ye[:-1] + ye[1:]) / 2
+        xc = (xe[:-1] + xe[1:]) / 2
+        top_flat = np.argsort(H, axis=None)[::-1][:top_n]
+        print(f"Top {top_n} cellules les plus fréquentées :")
+        for rank, flat_idx in enumerate(top_flat, 1):
+            i, j = np.unravel_index(flat_idx, H.shape)
+            print(f"  {rank}. {yc[i]:.3f}°N, {xc[j]:.3f}°E — {H[i, j]:.1f} h de présence")
+
     if a.grid_out:
+        if os.path.dirname(a.grid_out):
+            os.makedirs(os.path.dirname(a.grid_out), exist_ok=True)
         np.savez(a.grid_out, H=H, lat_edges=ye, lon_edges=xe)
         print(f"-> {a.grid_out} (grille sauvegardée, réutilisable avec 'map --grid')")
 
@@ -510,6 +623,11 @@ def main():
     """Point d'entrée CLI : une sous-commande par étape du pipeline (targets / stream /
     stream-map / map), cf. docstring du module pour le détail de chacune.
     """
+    # Config locale optionnelle (aismap.local.env) : ne fait que préremplir les défauts
+    # ci-dessous pour la génération de carte, un flag CLI explicite prime toujours dessus.
+    config = _load_local_config()
+    map_defaults = _map_output_defaults(config)
+
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -522,9 +640,11 @@ def main():
 
     s = sub.add_parser("map", help="trace la heatmap à partir d'une grille .npz déjà construite")
     s.set_defaults(f=cmd_map)
-    s.add_argument("--grid", default="grid.npz", help="grille à tracer (produite par 'stream-map --grid-out')")
-    s.add_argument("--png", default="heatmap.png", help="image PNG de sortie")
-    s.add_argument("--html", default="heatmap.html", help="carte HTML interactive de sortie (ignorée si folium absent)")
+    s.add_argument("--grid", default=map_defaults["grid"],
+                   help="grille à tracer (produite par 'stream-map --grid-out', défaut horodaté du jour)")
+    s.add_argument("--png", default=map_defaults["png"], help="image PNG de sortie (défaut horodaté du jour)")
+    s.add_argument("--html", default=map_defaults["html"],
+                   help="carte HTML interactive de sortie, ignorée si folium absent (défaut horodaté du jour)")
     s.add_argument("--title", default="Présence des coasters (cargo, LOA 80-140 m, "
                                       "tirant d'eau 3-6 m ; + flottes identifiées "
                                       "par MMSI/IMO) — aisstream.io",
@@ -536,23 +656,30 @@ def main():
     s = sub.add_parser("stream-map",
                        help="carte directement depuis les .jsonl de 'stream'")
     s.set_defaults(f=cmd_stream_map)
-    s.add_argument("--dir", default="stream", help="dossier contenant les ais-*.jsonl")
-    s.add_argument("--mode", choices=["id", "generic", "all"], default="all",
-                   help="filtre sur le champ 'match' (défaut : all)")
+    s.add_argument("--dir", default=config.get("AISMAP_DRIVE_DIR", "stream"),
+                   help="dossier contenant les ais-*.jsonl (config : AISMAP_DRIVE_DIR)")
+    s.add_argument("--mode", choices=["id", "generic", "all"],
+                   default=_config_choice(config, "AISMAP_MODE", ["id", "generic", "all"], "all"),
+                   help="filtre sur le champ 'match' (défaut : all, config : AISMAP_MODE)")
     s.add_argument("--cruising-status", dest="cruising_status", choices=["cruising", "harbour"],
-                   default=None, help="filtre sur le SOG : 'cruising' garde SOG>0, 'harbour' garde "
-                                      "SOG==0 ; non renseigné = les deux (défaut)")
-    s.add_argument("--step-min", type=int, default=5, help="pas de rééchantillonnage (min)")
-    s.add_argument("--cell-deg", type=float, default=0.01,
-                   help="taille de cellule en ° de latitude (défaut ~1,1 km)")
+                   default=_config_choice(config, "AISMAP_CRUISING_STATUS", ["cruising", "harbour"], None),
+                   help="filtre sur le SOG : 'cruising' garde SOG>0, 'harbour' garde SOG==0 ; "
+                        "non renseigné = les deux (défaut, config : AISMAP_CRUISING_STATUS)")
+    s.add_argument("--step-min", type=int, default=config.get("AISMAP_STEP_MIN", "5"),
+                   help="pas de rééchantillonnage en min (config : AISMAP_STEP_MIN)")
+    s.add_argument("--cell-deg", type=float, default=config.get("AISMAP_CELL_DEG", "0.01"),
+                   help="taille de cellule en ° de latitude, défaut ~1,1 km (config : AISMAP_CELL_DEG)")
     s.add_argument("--grid-out", default=None,
                    help="si fourni, sauvegarde aussi la grille en .npz (réutilisable avec 'map --grid')")
-    s.add_argument("--png", default="heatmap.png")
-    s.add_argument("--html", default="heatmap.html")
-    s.add_argument("--title", default="Présence des coasters — flux aisstream.io en direct")
+    s.add_argument("--png", default=map_defaults["png"], help="image PNG de sortie (défaut horodaté du jour)")
+    s.add_argument("--html", default=map_defaults["html"],
+                   help="carte HTML interactive de sortie (défaut horodaté du jour)")
+    s.add_argument("--title", default="Présence des coasters — flux aisstream.io en direct",
+                   help="titre du graphique")
     s.add_argument("--caption", default="Source : aisstream.io (temps réel). "
                                         "Pondéré en heures de présence par cellule (rééchantillonnage "
-                                        "par navire), pas en nombre de messages bruts.")
+                                        "par navire), pas en nombre de messages bruts.",
+                   help="légende en bas de figure")
 
     s = sub.add_parser("stream", help="collecteur temps réel aisstream.io (boucle infinie)")
     s.set_defaults(f=cmd_stream)

@@ -1,0 +1,38 @@
+name: CI
+
+# Filet de sécurité minimal : le Pi applique `git reset --hard` sur chaque push vers main
+# (cf. deploy/README.md), donc une régression non détectée casse la collecte en production
+# directement, sans étape de validation entre les deux.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Vérifier que le script compile
+        run: python -m py_compile tools/coaster_heatmap.py
+      - name: Installer les dépendances (carte + tests)
+        run: pip install -r requirements-dev.txt
+      - name: Smoke test --help (toutes les sous-commandes)
+        run: |
+          python tools/coaster_heatmap.py --help
+          python tools/coaster_heatmap.py targets --help
+          python tools/coaster_heatmap.py stream --help
+          python tools/coaster_heatmap.py stream-map --help
+          python tools/coaster_heatmap.py map --help
+      - name: Tests unitaires
+        run: pytest tests/ -v
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck sur les scripts de déploiement
+        run: shellcheck deploy/*.sh

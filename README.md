@@ -21,36 +21,45 @@ Voir [`deploy/README.md`](deploy/README.md) pour installer et configurer le coll
 
 ## Générer la heatmap locale
 
-Une fois que le Pi a collecté des données (quelques jours minimum pour une couverture correcte), tu peux générer la carte sur ta machine locale.
+Une fois que le Pi a collecté des données (quelques jours minimum pour une couverture correcte), tu peux générer la carte sur ta machine locale. Le flux recommandé passe **uniquement par Google Drive** (pas de SSH/`scp` nécessaires pour cette partie) :
 
-### 1. Récupérer les fichiers `.jsonl` du Pi
+### 1. Récupérer les fichiers `.jsonl` depuis Google Drive
 
-```
-scp -r pi@IP_DU_PI:~/aismap-data/stream ./stream
-```
+Va sur [drive.google.com](https://drive.google.com), ouvre le dossier `aismap/stream` (alimenté par la sauvegarde automatique du Pi, voir `deploy/README.md`), sélectionne les fichiers voulus (ou tout le dossier) et télécharge le zip. Extrais-le quelque part sur ta machine, ex. `~/Downloads/aismap-stream/`.
 
-Si SSH n'est pas disponible, tu peux aussi télécharger les fichiers depuis Google Drive (si la sauvegarde automatique est activée — voir `deploy/README.md`), mais seuls les `.jsonl` fermés depuis >26h y sont ; le fichier du jour en cours reste sur le Pi.
+Par défaut, Drive ne contient que les `.jsonl` sans écriture depuis plus de 26h (jamais le fichier du jour en cours). Si tu veux des données plus fraîches avant de générer ta carte, force l'envoi du fichier du jour depuis le Pi (commande documentée dans `deploy/README.md`, section "Avoir des données plus fraîches que 26h") puis retélécharge.
 
 ### 2. Installer les dépendances locales
 
 ```
-pip install pandas numpy matplotlib folium
+pip install -r requirements-map.txt
 ```
 
-- `pandas`, `numpy`, `matplotlib` : obligatoires
-- `folium` : optionnel (pour la carte HTML interactive ; sans lui, tu as juste le PNG)
+Voir [`requirements-map.txt`](requirements-map.txt) : `pandas`/`numpy`/`matplotlib` obligatoires, `folium` optionnel (carte HTML interactive), `cartopy` optionnel (fond de côtes/frontières sur le PNG — installation parfois plus lourde, décommente la ligne dans le fichier si tu la veux).
 
-### 3. Générer la carte
+### 3. (optionnel) Config locale pour ne pas retaper les mêmes options
 
-Depuis le dossier du dépôt :
+Copie [`aismap.local.env.example`](aismap.local.env.example) en `aismap.local.env` (à la racine du dépôt, ignoré par git) et renseigne au moins `AISMAP_DRIVE_DIR` (le dossier où tu as extrait le zip Drive à l'étape 1). Une fois ce fichier créé, `stream-map`/`map` l'utilisent automatiquement — un flag explicite sur la ligne de commande garde toujours la priorité.
+
+### 4. Générer la carte
+
+Depuis le dossier du dépôt (sans config locale, en précisant `--dir` toi-même) :
 
 ```
-python3 tools/coaster_heatmap.py stream-map --dir ./stream --png heatmap.png --html heatmap.html
+python3 tools/coaster_heatmap.py stream-map --dir ~/Downloads/aismap-stream
 ```
 
-Cela lit tous les `ais-*.jsonl`, rééchantillonne (5 min par défaut), accumule les heures de présence par cellule, et sort :
-- `heatmap.png` : image PNG en échelle log (heures de présence par cellule)
-- `heatmap.html` : carte interactive folium (si folium est installé)
+Ou, avec la config locale de l'étape 3 :
+
+```
+python3 tools/coaster_heatmap.py stream-map
+```
+
+Cela lit tous les `ais-*.jsonl`, rééchantillonne (5 min par défaut), accumule les heures de présence par cellule, affiche un résumé (période couverte, navires distincts, top 5 des cellules les plus fréquentées) et sort par défaut dans `out/` :
+- `out/heatmap-<date du jour>.png` : image PNG en échelle log (fond de côtes si `cartopy` est installé)
+- `out/heatmap-<date du jour>.html` : carte interactive folium (si folium est installé)
+
+Le nommage horodaté évite d'écraser les cartes précédentes — pratique pour comparer l'évolution dans le temps.
 
 ### Options utiles
 
@@ -70,21 +79,25 @@ Cela lit tous les `ais-*.jsonl`, rééchantillonne (5 min par défaut), accumule
 **Rééchantillonnage** :
 - `--step-min 5` : par défaut, chaque position vaut 5 min (pas du message brut, évite le biais des navires à quai qui émettent plus)
 
+Chacune de ces options peut aussi être réglée une fois pour toutes dans `aismap.local.env` (étape 3) — voir les commentaires du fichier `.example`.
+
 ### Réutiliser une grille sans relire les `.jsonl`
 
 Si tu veux juste changer le titre/légende sans tout recalculer :
 
 ```
-python3 tools/coaster_heatmap.py stream-map --dir ./stream --grid-out grid.npz
+python3 tools/coaster_heatmap.py stream-map --dir ~/Downloads/aismap-stream --grid-out out/grid.npz
 ```
 
 Puis :
 
 ```
-python3 tools/coaster_heatmap.py map --grid grid.npz --png heatmap.png --title "Mon titre" --caption "Ma légende"
+python3 tools/coaster_heatmap.py map --grid out/grid.npz --title "Mon titre" --caption "Ma légende"
 ```
 
 ## Structure du code
 
 - `tools/coaster_heatmap.py` : script principal (4 sous-commandes : `targets`, `stream`, `stream-map`, `map`)
 - `deploy/` : scripts systemd pour le Raspberry Pi (installation, mise à jour, sauvegarde)
+- `requirements-pi.txt` / `requirements-map.txt` : dépendances Python, respectivement pour le Pi (collecteur) et pour générer des cartes en local
+- `aismap.local.env.example` : modèle de config locale optionnelle (génération de carte)
